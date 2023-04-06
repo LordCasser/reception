@@ -16,3 +16,12 @@ func Redirect(w http.ResponseWriter, req *http.Request) {
 		// see comments below and consider the codes 308, 302, or 301
 		http.StatusTemporaryRedirect)
 }
+
+func ContainsInSlice(items []string, item string) bool {
+	for _, eachItem := range items {
+		if eachItem == item {
+			return true
+		}
+	}
+	return false
+}

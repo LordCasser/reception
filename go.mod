@@ -2,4 +2,4 @@ module github.com/LordCasser/reception
 
 go 1.18
 
-require github.com/kevinpollet/tlsmux v0.2.0
+require inet.af/tcpproxy v0.0.0-20221017015627-91f861402626

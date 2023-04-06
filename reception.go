@@ -1,9 +1,9 @@
 package reception
 
 import (
-	"github.com/kevinpollet/tlsmux"
+	"github.com/LordCasser/reception/utils"
+	"inet.af/tcpproxy"
 	"log"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -12,14 +12,15 @@ import (
 )
 
 type Reception struct {
-	port    int
-	sslPort int
-	mux     tlsmux.Mux
-	Switch  map[string]*httputil.ReverseProxy
+	port     int
+	sslPort  int
+	mux      tcpproxy.Proxy
+	Redirect []string
+	Switch   map[string]*httputil.ReverseProxy
 }
 
 func New() *Reception {
-	return &Reception{Switch: make(map[string]*httputil.ReverseProxy), mux: tlsmux.Mux{}, port: 80, sslPort: 443}
+	return &Reception{Switch: make(map[string]*httputil.ReverseProxy), mux: tcpproxy.Proxy{}, port: 80, sslPort: 443}
 }
 
 func (x *Reception) SetPort(port int) {
@@ -39,45 +40,43 @@ func (x *Reception) SetSPort(sport int) {
 
 // AddSwitch @url and transfer string will be parsed here, host example: example.com ,transfer example: https://www.example.com
 func (x *Reception) AddSwitch(host string, transfer string) error {
-	u, err := url.Parse(strings.TrimSpace(transfer))
+	to, err := url.Parse(strings.TrimSpace(transfer))
 	if err != nil {
 		log.Panicln("wrong host url!\n", err)
 	}
-	if u.Scheme == "https" {
-		x.mux.Handle(host, tlsmux.ProxyHandler{Addr: u.String()})
+	in, err := url.Parse(strings.TrimSpace(host))
+	if err != nil {
+		log.Panicln("wrong host url!\n", err)
+	}
+	if to.Scheme == "https" {
+		x.mux.AddSNIRoute(":"+strconv.Itoa(x.sslPort), in.Hostname(), tcpproxy.To(to.Host))
+		x.Redirect = append(x.Redirect, in.Hostname())
 	} else {
-		x.Switch[host] = httputil.NewSingleHostReverseProxy(u)
+		x.Switch[host] = httputil.NewSingleHostReverseProxy(to)
 	}
 	return nil
 }
 
 func (x *Reception) Serve() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		log.Println(r.Host)
 		if proxy, ok := x.Switch[r.Host]; ok {
 			proxy.ServeHTTP(w, r)
+		} else if utils.ContainsInSlice(x.Redirect, r.Host) {
+			utils.Redirect(w, r)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
-	l, err := net.Listen("tcp", ":"+strconv.Itoa(x.sslPort))
-	if err != nil {
-		log.Fatal(err)
-	}
+
 	go func() {
-		err := x.mux.Serve(l)
+		err := x.mux.Run()
 		if err != nil {
 			log.Println(err)
 		}
 	}()
-	err = http.ListenAndServe(":"+strconv.Itoa(x.port), nil)
+	err := http.ListenAndServe(":"+strconv.Itoa(x.port), nil)
 	if err != nil {
 		log.Println(err)
 	}
 }
-
-//func main() {
-//	rec := New()
-//	_ = rec.AddSwitch("localhost:8080", "http://127.0.0.1:8081")
-//	_ = rec.AddSwitch("127.0.0.1:8080", "http://127.0.0.1:8082")
-//	rec.Serve()
-//}
