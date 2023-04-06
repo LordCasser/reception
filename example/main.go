@@ -1,8 +1,10 @@
-package example
+package main
 
-//func main() {
-//	rec := New()
-//	_ = rec.AddSwitch("localhost:8080", "http://127.0.0.1:8081")
-//	_ = rec.AddSwitch("127.0.0.1:8080", "http://127.0.0.1:8082")
-//	rec.Serve()
-//}
+import "github.com/LordCasser/reception"
+
+func main() {
+	rec := reception.New()
+	_ = rec.AddSwitch("cloud.lordcasser.com", "127.0.0.1:8001", false)
+	_ = rec.AddSwitch("lordcasser.com", "127.0.0.1:8002", true)
+	rec.Serve()
+}

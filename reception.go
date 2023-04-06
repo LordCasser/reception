@@ -1,26 +1,19 @@
 package reception
 
 import (
-	"github.com/LordCasser/reception/utils"
 	"inet.af/tcpproxy"
 	"log"
-	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"strconv"
-	"strings"
 )
 
 type Reception struct {
-	port     int
-	sslPort  int
-	mux      tcpproxy.Proxy
-	Redirect []string
-	Switch   map[string]*httputil.ReverseProxy
+	port    int
+	sslPort int
+	mux     tcpproxy.Proxy
 }
 
 func New() *Reception {
-	return &Reception{Switch: make(map[string]*httputil.ReverseProxy), mux: tcpproxy.Proxy{}, port: 80, sslPort: 443}
+	return &Reception{mux: tcpproxy.Proxy{}, port: 80, sslPort: 443}
 }
 
 func (x *Reception) SetPort(port int) {
@@ -39,43 +32,20 @@ func (x *Reception) SetSPort(sport int) {
 }
 
 // AddSwitch @url and transfer string will be parsed here, host example: example.com ,transfer example: https://www.example.com
-func (x *Reception) AddSwitch(host string, transfer string) error {
-	to, err := url.Parse(strings.TrimSpace(transfer))
-	if err != nil {
-		log.Panicln("wrong host url!\n", err)
-	}
-	in, err := url.Parse(strings.TrimSpace(host))
-	if err != nil {
-		log.Panicln("wrong host url!\n", err)
-	}
-	if to.Scheme == "https" {
-		x.mux.AddSNIRoute(":"+strconv.Itoa(x.sslPort), in.Hostname(), tcpproxy.To(to.Host))
-		x.Redirect = append(x.Redirect, in.Hostname())
+func (x *Reception) AddSwitch(host string, transfer string, ssl bool) error {
+	log.Println("host:", host, "trans:", transfer)
+	if ssl {
+		x.mux.AddSNIRoute(":"+strconv.Itoa(x.sslPort), host, tcpproxy.To(transfer))
 	} else {
-		x.Switch[host] = httputil.NewSingleHostReverseProxy(to)
+		x.mux.AddHTTPHostRoute(":"+strconv.Itoa(x.port), host, tcpproxy.To(transfer))
 	}
+
 	return nil
 }
 
 func (x *Reception) Serve() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		log.Println(r.Host)
-		if proxy, ok := x.Switch[r.Host]; ok {
-			proxy.ServeHTTP(w, r)
-		} else if utils.ContainsInSlice(x.Redirect, r.Host) {
-			utils.Redirect(w, r)
-		} else {
-			w.WriteHeader(http.StatusNotFound)
-		}
-	})
+	err := x.mux.Run()
 
-	go func() {
-		err := x.mux.Run()
-		if err != nil {
-			log.Println(err)
-		}
-	}()
-	err := http.ListenAndServe(":"+strconv.Itoa(x.port), nil)
 	if err != nil {
 		log.Println(err)
 	}
